@@ -146,14 +146,8 @@ void *run_main(void *arg) {
 
     int ret;
 
-    AVDictionary *options = NULL;
-    av_dict_set(&options, "rtmp_buffer", "0", 0);
-    av_dict_set(&options, "rtmp_live", "live", 0);
-    av_dict_set(&options, "tcp_nodelay", "1", 0);
-    av_dict_set(&options, "analyzeduration", "1000000", 0);
-    av_dict_set(&options, "probesize", "500000", 0);
     AVFormatContext *format_context;
-    if ((ret = avformat_open_input(&format_context, "rtmp://192.168.1.187:1935/live/stream", NULL, &options)) < 0) {
+    if ((ret = avformat_open_input(&format_context, "rtmp://192.168.8.7:1935/live/stream", NULL, NULL)) < 0) {
         LOGE("[ERROR]: avformat_open_input %s", av_err2str(ret));
         return NULL;
     }
@@ -164,7 +158,7 @@ void *run_main(void *arg) {
     }
 
     const AVCodec *vcodec = NULL;
-    if ((ret = av_find_best_stream(format_context, AVMEDIA_TYPE_VIDEO, -1, -1, &vcodec, 0)) < 0) {
+    if ((ret = av_find_best_stream(format_context, AVMEDIA_TYPE_VIDEO, -1, 0, &vcodec, 0)) < 0) {
         LOG("[ERROR]: av_find_best_stream %s", av_err2str(ret));
         exit(1);
     }

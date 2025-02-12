@@ -1,26 +1,29 @@
-SDK     = $(HOME)/Library/Android/sdk
-ADB     = $(SDK)/platform-tools/adb
-AAPT    = $(SDK)/build-tools/34.0.0/aapt
-SIGNER  = $(SDK)/build-tools/34.0.0/apksigner
-CC      = $(SDK)/ndk/21.1.6352462/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android21-clang++
-CFLAGS  = -std=c++11 -I../../.deps/include -Wall -Wextra
-LDFLAGS = -shared -fPIC -L../../.deps/lib -lGLESv3 -legl -llog -lc -lm -landroid -lavformat -lavcodec -lavutil -lc++_static -nodefaultlibs -lgcc
+SDK     	= $(HOME)/Library/Android/sdk
+JAR = $(SDK)/platforms/android-21/android.jar
+CC      	= $(SDK)/ndk/27.2.12479018/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android35-clang++
+CFLAGS  	= -std=c++11 -I/usr/local/ffmpeg/include
+LDFLAGS 	= -shared -fPIC -lGLESv3 -legl -llog -lc -lm -landroid -lc++_static -nodefaultlibs
 
 .PHONE: all clean
 
-all:
-	@mkdir -p lib/arm64-v8a
-	$(CC) $(CFLAGS) video.cpp -o lib/arm64-v8a/libvideo.so $(LDFLAGS)
-	$(AAPT) package -f -M AndroidManifest.xml -I $(SDK)/platforms/android-21/android.jar -F video.unsigned.apk
-	$(AAPT) add video.unsigned.apk lib/arm64-v8a/libvideo.so > /dev/null
-	$(SIGNER) sign --ks ~/.gradle/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --out video.apk video.unsigned.apk
-	@rm -rf video.unsigned.apk video.apk.idsig lib
+all: app.apk
 
-install: all
-	@$(ADB) install video.apk > /dev/null
+lib/arm64-v8a/libvideo.so: main.cpp
+	@mkdir -p lib/arm64-v8a
+	$(CC) $(CFLAGS) libffmpeg_android.a main.cpp -o lib/arm64-v8a/libvideo.so $(LDFLAGS)
+
+app.unsigned.apk: lib/arm64-v8a/libvideo.so
+	aapt package -f -M AndroidManifest.xml -I $(JAR) -F app.unsigned.apk
+	aapt add app.unsigned.apk lib/arm64-v8a/libvideo.so > /dev/null
+
+app.apk: app.unsigned.apk
+	apksigner sign --ks ~/.gradle/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --out app.apk app.unsigned.apk
+
+install: app.apk
+	adb install app.apk > /dev/null
 
 launch: install
-	@$(ADB) shell am start -n "com.example.video/android.app.NativeActivity" > /dev/null
+	adb shell am start -n "com.livsho.pl/android.app.NativeActivity" > /dev/null
 
 clean:
-	rm -rf *.apk *.unsigned.apk
+	rm -rf **.apk **.unsigned.apk build/

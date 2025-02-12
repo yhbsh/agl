@@ -11,3 +11,4 @@ compile_commands.json
 *.dex
 *.class
 *.idsig
+*.so
