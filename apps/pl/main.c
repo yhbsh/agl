@@ -13,6 +13,8 @@
 #include <android/native_window.h>
 
 #include <libavformat/avformat.h>
+#include <libavcodec/avcodec.h>
+#include <libavutil/pixdesc.h>
 #include <pthread.h>
 
 #define LOG(...) ((void)__android_log_print(ANDROID_LOG_INFO, "ENGINE", __VA_ARGS__))
@@ -25,25 +27,78 @@ typedef struct {
     pthread_t thread;
 } Context;
 
+static int ret;
 void *ffmpeg_thread(void *arg) {
     Context *ctx = (Context *)arg;
 
-    const char *url = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
     AVFormatContext *format = NULL;
-    int ret = avformat_open_input(&format, url, NULL, NULL);
+    ret = avformat_open_input(&format, "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", NULL, NULL);
     if (ret < 0) {
-        LOG("avformat_open_input %s\n", av_err2str(ret));
+        LOG("ERROR avformat_open_input %s", av_err2str(ret));
+        return NULL;
+    }
+
+    ret = avformat_find_stream_info(format, NULL);
+    if (ret < 0) {
+        LOG("ERROR avformat_find_stream_info %s", av_err2str(ret));
+        return NULL;
+    }
+
+    const AVCodec *c = NULL;
+    ret = av_find_best_stream(format, AVMEDIA_TYPE_VIDEO, -1, 0, &c, 0);
+    if (ret < 0) {
+        LOG("ERROR av_find_best_stream %s", av_err2str(ret));
+        return NULL;
+    }
+
+    AVStream *stream = format->streams[ret];
+
+    AVCodecContext *codec = avcodec_alloc_context3(c);
+    if (!codec) {
+        LOG("ERROR avcodec_alloc_context3");
+        return NULL;
+    }
+
+    ret = avcodec_parameters_to_context(codec, stream->codecpar);
+    if (ret < 0) {
+        LOG("ERROR avcodec_paramters_to_context %s", av_err2str(ret));
+        return NULL;
+    }
+
+    ret = avcodec_open2(codec, c, NULL);
+    if (ret < 0) {
+        LOG("ERROR avcodec_open2 %s", av_err2str(ret));
         return NULL;
     }
 
     AVPacket *pkt = av_packet_alloc();
-    while (av_read_frame(format, pkt) >= 0 && ctx->running) {
-        // should read as fast as possible
-        // buffer frames, not packets, and then main loop should read from circular buffer and render
-        // LOG("pkt->size %d\n", pkt->size);
+    AVFrame *frame = av_frame_alloc();
+    while (ctx->running) {
+        ret = av_read_frame(format, pkt);
+        if (ret < 0) {
+            break;
+        }
+
+        if (ret == AVERROR_EOF) {
+            break;
+        }
+
+        if (ret == AVERROR(EAGAIN) || pkt->stream_index != stream->index) {
+            av_packet_unref(pkt);
+            continue;
+        }
+
+        if ((ret = avcodec_send_packet(codec, pkt)) == 0) {
+            while ((ret = avcodec_receive_frame(codec, frame)) == 0) {
+                LOG("%dx%d %s", frame->width, frame->height, av_get_pix_fmt_name(frame->format));
+                av_frame_unref(frame);
+            }
+        }
         av_packet_unref(pkt);
     }
+    av_frame_free(&frame);
     av_packet_free(&pkt);
+    avcodec_free_context(&codec);
     avformat_close_input(&format);
 
     return NULL;
@@ -64,9 +119,10 @@ void *main_thread(void *arg) {
     }
 
     EGLint attributes[] = {
-        EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-        EGL_BLUE_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_RED_SIZE, 8,
-        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT, EGL_NONE
+        EGL_SURFACE_TYPE, EGL_WINDOW_BIT, 
+        EGL_BLUE_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_RED_SIZE, 8, 
+        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT, 
+        EGL_NONE,
     };
 
     EGLConfig egl_config;
@@ -131,7 +187,7 @@ void on_window_init(ANativeActivity *activity, ANativeWindow *window) {
     ctx->window = window;
     ctx->running = true;
 
-    pthread_create(&ctx->thread, NULL, main_thread, (Context *)activity->instance);
+    pthread_create(&ctx->thread, NULL, main_thread, ctx);
 }
 
 void on_window_deinit(ANativeActivity *activity, ANativeWindow *window) {
