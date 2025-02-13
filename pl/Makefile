@@ -1,7 +1,7 @@
 ANDROID_SDK = $(HOME)/Library/Android/sdk
 ANDROID_JAR = $(ANDROID_SDK)/platforms/android-35/android.jar
 CC          = $(ANDROID_SDK)/ndk/27.2.12479018/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android35-clang
-CFLAGS      = -I.
+CFLAGS      = -I../.deps/include
 LDFLAGS     = -shared -fPIC -lGLESv3 -legl -llog -landroid -lm
 
 .PHONE: all clean
