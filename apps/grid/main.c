@@ -20,37 +20,30 @@ typedef struct {
     pthread_t thread;
 } AndroidApp;
 
-static const char *vertex_shader_source = R"(#version 300 es
-    precision mediump float;
+static const char *vertex_shader_source = 
+"#version 300 es\n"
+"precision mediump float;\n"
+"layout(location = 0) in vec2 aPos;\n"
+"uniform vec2 offset;\n"
+"void main() {\n"
+"   gl_Position = vec4(aPos, 0.0, 1.0);\n"
+"   gl_Position.x += offset.x;\n"
+"   gl_Position.y -= offset.y;\n"
+"}";
 
-    layout(location = 0) in vec2 aPos;
-    uniform vec2 offset;
+static const char *fragment_shader_source = "#version 300 es\n"
+"precision mediump float;\n"
+"out vec4 FragColor;\n"
+"void main() {\n"
+"    FragColor = vec4(0.0, 1.0, 1.0, 1.0);\n"
+"}";
 
-    void main() {
-        gl_Position = vec4(aPos, 0.0, 1.0);
-        gl_Position.x += offset.x;
-        gl_Position.y -= offset.y;
-    }
-)";
-
-static const char *fragment_shader_source = R"(#version 300 es
-    precision mediump float;
-
-    out vec4 FragColor;
-
-    void main() {
-        FragColor = vec4(0.0, 1.0, 1.0, 1.0);
-    }
-)";
-
-// clang-format off
 static const GLfloat square_vertices[] = {
     -0.95f, +0.30f, 
     -0.05f, +0.30f, 
     -0.95f, +1.00f, 
     -0.05f, +1.00f,
 };
-// clang-format on
 
 void *run_main(void *arg) {
     AndroidApp *app = (AndroidApp *)arg;
