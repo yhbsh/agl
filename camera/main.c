@@ -19,9 +19,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, "ENGINE", __VA_ARGS__))
-#define LOGE(...) ((void)__android_log_print(ANDROID_LOG_ERROR, "ENGINE", __VA_ARGS__))
-#define LOGV(...) ((void)__android_log_print(ANDROID_LOG_VERBOSE, "ENGINE", __VA_ARGS__))
+#define LOG(...) ((void)__android_log_print(ANDROID_LOG_INFO, "ENGINE", __VA_ARGS__))
 
 typedef struct {
     bool running;
@@ -55,7 +53,7 @@ void onImageAvailable(void *context, AImageReader *reader) {
     AImage_getHeight(image, &height);
     AImage_getFormat(image, &format);
 
-    LOGI("Captured image size: width=%d, height=%d, format=%d", width, height, format);
+    //LOG("Captured image size: width=%d, height=%d, format=%d", width, height, format);
 
     AImage_delete(image);
 }
@@ -171,7 +169,12 @@ void *main_thread(void *arg) {
     assert(ret == ACAMERA_OK && "cannot start capture session");
 
     while (ctx->running) {
-        // nothing
+        AInputEvent *event = NULL;
+        while (AInputQueue_getEvent(ctx->input, &event) >= 0) {
+            if (AInputQueue_preDispatchEvent(ctx->input, event)) continue;
+            AInputQueue_finishEvent(ctx->input, event, 0);
+        }
+
     }
 
     if (cameraIdList) ACameraManager_deleteCameraIdList(cameraIdList);
@@ -195,29 +198,6 @@ void *main_thread(void *arg) {
     return NULL;
 }
 
-void on_window_init(ANativeActivity *activity, ANativeWindow *window) {
-    LOGI("on_window_init");
-
-    Context *ctx = (Context *)activity->instance;
-
-    ctx->preview_window = window;
-    ctx->running = true;
-
-    pthread_create(&ctx->thread, NULL, main_thread, ctx);
-}
-
-void on_window_deinit(ANativeActivity *activity, ANativeWindow *window) {
-    LOGI("on_window_deinit");
-
-    Context *ctx = (Context *)activity->instance;
-
-    ctx->running = false;
-
-    pthread_join(ctx->thread, NULL);
-
-    ctx->preview_window = NULL;
-}
-
 void on_input_init(ANativeActivity *activity, AInputQueue *input) {
     Context *ctx = (Context *)activity->instance;
     ctx->input = input;
@@ -228,6 +208,25 @@ void on_input_deinit(ANativeActivity *activity, AInputQueue *input) {
     Context *ctx = (Context *)activity->instance;
     AInputQueue_detachLooper(input);
     ctx->input = NULL;
+}
+
+void on_window_init(ANativeActivity *activity, ANativeWindow *window) {
+    LOG("on_window_init");
+
+    Context *ctx = (Context *)activity->instance;
+    ctx->preview_window = window;
+    ctx->running = true;
+    pthread_create(&ctx->thread, NULL, main_thread, ctx);
+}
+
+void on_window_deinit(ANativeActivity *activity, ANativeWindow *window) {
+    LOG("on_window_deinit");
+
+    Context *ctx = (Context *)activity->instance;
+    ctx->preview_window = window;
+    ctx->running = false;
+    pthread_join(ctx->thread, NULL);
+    ctx->preview_window = NULL;
 }
 
 JNIEXPORT void ANativeActivity_onCreate(ANativeActivity *activity, void *savedState, size_t savedStateSize) {
