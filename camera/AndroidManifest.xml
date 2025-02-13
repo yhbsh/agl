@@ -12,7 +12,7 @@
             android:name="android.app.NativeActivity"
             android:exported="true"
             android:screenOrientation="portrait">
-            <meta-data android:name="android.app.lib_name" android:value="camera" />
+            <meta-data android:name="android.app.lib_name" android:value="main" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

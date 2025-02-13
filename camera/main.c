@@ -23,7 +23,7 @@
 #define LOGE(...) ((void)__android_log_print(ANDROID_LOG_ERROR, "ENGINE", __VA_ARGS__))
 #define LOGV(...) ((void)__android_log_print(ANDROID_LOG_VERBOSE, "ENGINE", __VA_ARGS__))
 
-typedef struct AndroidApp {
+typedef struct {
     bool running;
     pthread_t thread;
 
@@ -40,10 +40,10 @@ typedef struct AndroidApp {
 
     ANativeWindow *preview_window;
     ANativeWindow *process_window;
-} AndroidApp;
+    AInputQueue *input;
+} Context;
 
 void onImageAvailable(void *context, AImageReader *reader) {
-    (void)context;
     int ret;
 
     AImage *image = NULL;
@@ -60,41 +60,41 @@ void onImageAvailable(void *context, AImageReader *reader) {
     AImage_delete(image);
 }
 
-void *camera_task(void *arg) {
+void *main_thread(void *arg) {
     int ret;
 
-    AndroidApp *app = (AndroidApp *)arg;
+    Context *ctx = (Context *)arg;
 
-    app->camera_manager = ACameraManager_create();
-    assert(app->camera_manager && "cannot create camera manager");
+    ctx->camera_manager = ACameraManager_create();
+    assert(ctx->camera_manager && "cannot create camera manager");
 
     // 1. list all available cameras
     ACameraIdList *cameraIdList = NULL;
-    ret = ACameraManager_getCameraIdList(app->camera_manager, &cameraIdList);
+    ret = ACameraManager_getCameraIdList(ctx->camera_manager, &cameraIdList);
     assert(ret == ACAMERA_OK && cameraIdList && "cannot get cameras ids list");
 
     // 2. open the first available camera
     ACameraDevice_StateCallbacks camera_state_callbacks = {0};
-    ret = ACameraManager_openCamera(app->camera_manager, cameraIdList->cameraIds[0], &camera_state_callbacks, &app->camera_device);
-    assert(ret == ACAMERA_OK && app->camera_device && "Failed to open camera device");
+    ret = ACameraManager_openCamera(ctx->camera_manager, cameraIdList->cameraIds[0], &camera_state_callbacks, &ctx->camera_device);
+    assert(ret == ACAMERA_OK && ctx->camera_device && "Failed to open camera device");
 
     // 3. create output container
-    ret = ACaptureSessionOutputContainer_create(&app->output_container);
-    assert(ret == ACAMERA_OK && app->output_container && "cannot create output container");
+    ret = ACaptureSessionOutputContainer_create(&ctx->output_container);
+    assert(ret == ACAMERA_OK && ctx->output_container && "cannot create output container");
 
     // 4. create preview session output and add to container
     {
-        ret = ACaptureSessionOutput_create(app->preview_window, &app->preview_session_output);
-        assert(ret == ACAMERA_OK && app->preview_session_output && "cannot create preview session output");
+        ret = ACaptureSessionOutput_create(ctx->preview_window, &ctx->preview_session_output);
+        assert(ret == ACAMERA_OK && ctx->preview_session_output && "cannot create preview session output");
 
-        ret = ACaptureSessionOutputContainer_add(app->output_container, app->preview_session_output);
+        ret = ACaptureSessionOutputContainer_add(ctx->output_container, ctx->preview_session_output);
         assert(ret == ACAMERA_OK && "cannot add preview session output to the output container");
     }
 
     // 5. create process session output and add to container
     {
         ACameraMetadata *metadata = NULL;
-        ret = ACameraManager_getCameraCharacteristics(app->camera_manager, cameraIdList->cameraIds[0], &metadata);
+        ret = ACameraManager_getCameraCharacteristics(ctx->camera_manager, cameraIdList->cameraIds[0], &metadata);
         assert(ret == ACAMERA_OK && metadata && "cannot get camera characteristics");
 
         ACameraMetadata_const_entry entry = {0};
@@ -129,104 +129,114 @@ void *camera_task(void *arg) {
         ret = AImageReader_setImageListener(reader, &ln);
         assert(ret == AMEDIA_OK && "cannot create an image listener");
 
-        ret = AImageReader_getWindow(reader, &app->process_window);
+        ret = AImageReader_getWindow(reader, &ctx->process_window);
         assert(ret == AMEDIA_OK && reader && "cannot get native window from the image reader");
 
-        ret = ACaptureSessionOutput_create(app->process_window, &app->process_session_output);
-        assert(ret == ACAMERA_OK && app->process_session_output && "cannot create process session output");
+        ret = ACaptureSessionOutput_create(ctx->process_window, &ctx->process_session_output);
+        assert(ret == ACAMERA_OK && ctx->process_session_output && "cannot create process session output");
 
-        ret = ACaptureSessionOutputContainer_add(app->output_container, app->process_session_output);
+        ret = ACaptureSessionOutputContainer_add(ctx->output_container, ctx->process_session_output);
         assert(ret == ACAMERA_OK && "cannot add process session output to the output container");
     }
 
     // 6. create capture request
-    ret = ACameraDevice_createCaptureRequest(app->camera_device, TEMPLATE_PREVIEW, &app->capture_request);
-    assert(ret == ACAMERA_OK && app->capture_request && "cannot create capture request");
+    ret = ACameraDevice_createCaptureRequest(ctx->camera_device, TEMPLATE_PREVIEW, &ctx->capture_request);
+    assert(ret == ACAMERA_OK && ctx->capture_request && "cannot create capture request");
 
     {
         // 7. create output target for preview and add to capture request
-        ret = ACameraOutputTarget_create(app->preview_window, &app->preview_output_target);
-        assert(ret == ACAMERA_OK && app->preview_output_target && "cannot create preview output target");
+        ret = ACameraOutputTarget_create(ctx->preview_window, &ctx->preview_output_target);
+        assert(ret == ACAMERA_OK && ctx->preview_output_target && "cannot create preview output target");
 
-        ret = ACaptureRequest_addTarget(app->capture_request, app->preview_output_target);
+        ret = ACaptureRequest_addTarget(ctx->capture_request, ctx->preview_output_target);
         assert(ret == ACAMERA_OK && "cannot add preview target to capture request");
     }
 
     {
         // 8. Create output target for process and add to capture request
-        ret = ACameraOutputTarget_create(app->process_window, &app->process_output_target);
-        assert(ret == ACAMERA_OK && app->process_output_target && "cannot create process output target");
+        ret = ACameraOutputTarget_create(ctx->process_window, &ctx->process_output_target);
+        assert(ret == ACAMERA_OK && ctx->process_output_target && "cannot create process output target");
 
-        ret = ACaptureRequest_addTarget(app->capture_request, app->process_output_target);
+        ret = ACaptureRequest_addTarget(ctx->capture_request, ctx->process_output_target);
         assert(ret == ACAMERA_OK && "cannot add process target to capture request");
     }
 
     // 8. create capture session
     const ACameraCaptureSession_stateCallbacks capture_session_callbacks = {0};
-    ret = ACameraDevice_createCaptureSession(app->camera_device, app->output_container, &capture_session_callbacks, &app->camera_capture_session);
-    assert(ret == ACAMERA_OK && app->camera_capture_session && "cannot create capture session");
+    ret = ACameraDevice_createCaptureSession(ctx->camera_device, ctx->output_container, &capture_session_callbacks, &ctx->camera_capture_session);
+    assert(ret == ACAMERA_OK && ctx->camera_capture_session && "cannot create capture session");
 
     // 9. start capture session
-    ret = ACameraCaptureSession_setRepeatingRequest(app->camera_capture_session, NULL, 1, &app->capture_request, NULL);
+    ret = ACameraCaptureSession_setRepeatingRequest(ctx->camera_capture_session, NULL, 1, &ctx->capture_request, NULL);
     assert(ret == ACAMERA_OK && "cannot start capture session");
 
-    while (app->running) {
+    while (ctx->running) {
         // nothing
     }
 
     if (cameraIdList) ACameraManager_deleteCameraIdList(cameraIdList);
-    if (app->camera_capture_session) {
-        ACameraCaptureSession_stopRepeating(app->camera_capture_session);
-        ACameraCaptureSession_close(app->camera_capture_session);
+    if (ctx->camera_capture_session) {
+        ACameraCaptureSession_stopRepeating(ctx->camera_capture_session);
+        ACameraCaptureSession_close(ctx->camera_capture_session);
     }
 
-    if (app->capture_request) ACaptureRequest_free(app->capture_request);
-    if (app->output_container) ACaptureSessionOutputContainer_free(app->output_container);
+    if (ctx->capture_request) ACaptureRequest_free(ctx->capture_request);
+    if (ctx->output_container) ACaptureSessionOutputContainer_free(ctx->output_container);
 
-    if (app->preview_output_target) ACameraOutputTarget_free(app->preview_output_target);
-    if (app->preview_session_output) ACaptureSessionOutput_free(app->preview_session_output);
+    if (ctx->preview_output_target) ACameraOutputTarget_free(ctx->preview_output_target);
+    if (ctx->preview_session_output) ACaptureSessionOutput_free(ctx->preview_session_output);
 
-    if (app->process_output_target) ACameraOutputTarget_free(app->process_output_target);
-    if (app->process_session_output) ACaptureSessionOutput_free(app->process_session_output);
+    if (ctx->process_output_target) ACameraOutputTarget_free(ctx->process_output_target);
+    if (ctx->process_session_output) ACaptureSessionOutput_free(ctx->process_session_output);
 
-    if (app->camera_device) ACameraDevice_close(app->camera_device);
-    if (app->camera_manager) ACameraManager_delete(app->camera_manager);
+    if (ctx->camera_device) ACameraDevice_close(ctx->camera_device);
+    if (ctx->camera_manager) ACameraManager_delete(ctx->camera_manager);
 
     return NULL;
 }
 
 void on_window_init(ANativeActivity *activity, ANativeWindow *window) {
-    LOGI("onNativeWindowCreated");
+    LOGI("on_window_init");
 
-    AndroidApp *app = (AndroidApp *)activity->instance;
+    Context *ctx = (Context *)activity->instance;
 
-    app->preview_window = window;
-    app->running = true;
+    ctx->preview_window = window;
+    ctx->running = true;
 
-    pthread_create(&app->thread, NULL, camera_task, app);
+    pthread_create(&ctx->thread, NULL, main_thread, ctx);
 }
 
 void on_window_deinit(ANativeActivity *activity, ANativeWindow *window) {
-    (void)window;
-    LOGI("onNativeWindowDestroyed");
+    LOGI("on_window_deinit");
 
-    AndroidApp *app = (AndroidApp *)activity->instance;
+    Context *ctx = (Context *)activity->instance;
 
-    app->running = false;
+    ctx->running = false;
 
-    pthread_join(app->thread, NULL);
+    pthread_join(ctx->thread, NULL);
 
-    app->preview_window = NULL;
+    ctx->preview_window = NULL;
+}
+
+void on_input_init(ANativeActivity *activity, AInputQueue *input) {
+    Context *ctx = (Context *)activity->instance;
+    ctx->input = input;
+    AInputQueue_attachLooper(input, ALooper_prepare(ALOOPER_PREPARE_ALLOW_NON_CALLBACKS), ALOOPER_EVENT_INPUT, NULL, NULL);
+}
+
+void on_input_deinit(ANativeActivity *activity, AInputQueue *input) {
+    Context *ctx = (Context *)activity->instance;
+    AInputQueue_detachLooper(input);
+    ctx->input = NULL;
 }
 
 JNIEXPORT void ANativeActivity_onCreate(ANativeActivity *activity, void *savedState, size_t savedStateSize) {
-    (void)savedState;
-    (void)savedStateSize;
-
-    AndroidApp *app = malloc(sizeof(AndroidApp));
-    memset(app, 0, sizeof(AndroidApp));
+    Context *ctx = malloc(sizeof(Context));
+    memset(ctx, 0, sizeof(Context));
 
     activity->callbacks->onNativeWindowCreated = on_window_init;
     activity->callbacks->onNativeWindowDestroyed = on_window_deinit;
-    activity->instance = app;
+    activity->callbacks->onInputQueueCreated = on_input_init;
+    activity->callbacks->onInputQueueDestroyed = on_input_deinit;
+    activity->instance = ctx;
 }

@@ -1,27 +1,30 @@
 ANDROID_SDK = $(HOME)/Library/Android/sdk
-ANDROID_JAR = $(ANDROID_SDK)/platforms/android-34/android.jar
-CC          = $(HOME)/Library/Android/sdk/ndk/27.2.12479018/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android34-clang
+ANDROID_JAR = $(ANDROID_SDK)/platforms/android-35/android.jar
+CC          = $(HOME)/Library/Android/sdk/ndk/27.2.12479018/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android35-clang
 
-CFLAGS  = -O3 -Wall -Wextra
+CFLAGS  = -O3 -Wall
 LDFLAGS = -shared -fPIC -llog -landroid -lcamera2ndk -lmediandk -lc -lm
 
 .PHONE: all clean
 
-all: package
+all: main.apk
 
-package:
-	@mkdir -p lib/arm64-v8a
-	$(CC) $(CFLAGS) camera.c -o lib/arm64-v8a/libcamera.so $(LDFLAGS)
-	aapt package -f -M AndroidManifest.xml -I $(ANDROID_JAR) -F camera.unsigned.apk
-	aapt add camera.unsigned.apk lib/arm64-v8a/libcamera.so > /dev/null
-	apksigner sign --ks ~/.gradle/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --out camera.apk camera.unsigned.apk
-	@rm -rf **.idsig **.unsigned.apk lib
+lib/arm64-v8a/libmain.so: main.c
+	mkdir -p lib/arm64-v8a
+	$(CC) $(CFLAGS) main.c -o lib/arm64-v8a/libmain.so $(LDFLAGS)
+
+main.unsigned.apk: lib/arm64-v8a/libmain.so
+	aapt package -f -M AndroidManifest.xml -I $(ANDROID_JAR) -F main.unsigned.apk
+	aapt add main.unsigned.apk lib/arm64-v8a/libmain.so > /dev/null
+
+main.apk: main.unsigned.apk
+	apksigner sign --ks ~/.gradle/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --out main.apk main.unsigned.apk
 
 install: package
-	@adb install camera.apk > /dev/null
+	adb install main.apk > /dev/null
 
 launch: install
-	@adb shell am start -n "com.example.camera/android.app.NativeActivity" > /dev/null
+	adb shell am start -n "com.example.camera/android.app.NativeActivity" > /dev/null
 
 clean:
 	rm -rf **.apk **.unsigned.apk build/
