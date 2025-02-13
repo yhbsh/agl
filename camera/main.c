@@ -75,7 +75,7 @@ void *main_thread(void *arg) {
 
     // 2. open the first available camera
     ACameraDevice_StateCallbacks camera_state_callbacks = {0};
-    ret = ACameraManager_openCamera(ctx->camera_manager, cameraIdList->cameraIds[0], &camera_state_callbacks, &ctx->camera_device);
+    ret = ACameraManager_openCamera(ctx->camera_manager, cameraIdList->cameraIds[1], &camera_state_callbacks, &ctx->camera_device);
     assert(ret == ACAMERA_OK && ctx->camera_device && "Failed to open camera device");
 
     // 3. create output container

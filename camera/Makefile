@@ -15,16 +15,16 @@ lib/arm64-v8a/libmain.so: main.c
 
 main.unsigned.apk: lib/arm64-v8a/libmain.so
 	aapt package -f -M AndroidManifest.xml -I $(ANDROID_JAR) -F main.unsigned.apk
-	aapt add main.unsigned.apk lib/arm64-v8a/libmain.so > /dev/null
+	aapt add main.unsigned.apk lib/arm64-v8a/libmain.so >& /dev/null
 
 main.apk: main.unsigned.apk
 	apksigner sign --ks ~/.gradle/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --out main.apk main.unsigned.apk
 
-install: package
-	adb install main.apk > /dev/null
+install: main.apk
+	adb install main.apk >& /dev/null
 
 launch: install
-	adb shell am start -n "com.example.camera/android.app.NativeActivity" > /dev/null
+	adb shell am start -n "com.example.camera/android.app.NativeActivity" >& /dev/null
 
 clean:
 	rm -rf **.apk **.unsigned.apk build/
