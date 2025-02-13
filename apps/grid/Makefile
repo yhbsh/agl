@@ -6,17 +6,20 @@ LDFLAGS   = -lGLESv3 -legl -llog -lc -lm -landroid -lc++_static -nodefaultlibs
 
 .PHONY: all clean
 
-all: package
+all: grid.apk
 
-package:
+lib/arm64-v8a/libgrid.so: main.cc
 	@mkdir -p lib/arm64-v8a
-	$(CXX) $(CXXFLAGS) grid.cpp -o lib/arm64-v8a/libgrid.so $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) main.cc -o lib/arm64-v8a/libgrid.so $(LDFLAGS)
+
+grid.unsigned.apk: lib/arm64-v8a/libgrid.so
 	aapt package -f -M AndroidManifest.xml -I $(SDK)/platforms/android-21/android.jar -F grid.unsigned.apk
 	aapt add grid.unsigned.apk lib/arm64-v8a/libgrid.so > /dev/null
-	apksigner sign --ks ~/.gradle/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --out grid.apk grid.unsigned.apk
-	@rm -rf grid.unsigned.apk grid.apk.idsig lib
 
-install: package
+grid.apk: grid.unsigned.apk
+	apksigner sign --ks ~/.gradle/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --out grid.apk grid.unsigned.apk
+
+install: grid.apk
 	@adb install grid.apk > /dev/null
 
 launch: install
