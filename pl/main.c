@@ -27,9 +27,9 @@ typedef struct {
     pthread_t thread;
 } Context;
 
-static int ret;
+
 void *ffmpeg_thread(void *arg) {
-    Context *ctx = (Context *)arg;
+    int ret;
 
     AVFormatContext *format = NULL;
     ret = avformat_open_input(&format, "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", NULL, NULL);
@@ -73,6 +73,8 @@ void *ffmpeg_thread(void *arg) {
 
     AVPacket *pkt = av_packet_alloc();
     AVFrame *frame = av_frame_alloc();
+
+    Context *ctx = (Context *)arg;
     while (ctx->running) {
         ret = av_read_frame(format, pkt);
         if (ret < 0) {
