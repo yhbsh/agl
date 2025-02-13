@@ -1,0 +1,4 @@
+libavcodec
+libavformat
+libavutil
+*.a
