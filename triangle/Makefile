@@ -10,7 +10,7 @@ LDFLAGS = -shared -fPIC -lGLESv3 -legl -llog -landroid -lm
 
 all:
 	@mkdir -p lib/arm64-v8a
-	$(CC) $(CFLAGS) triangle.c -o lib/arm64-v8a/libtriangle.so $(LDFLAGS)
+	$(CC) $(CFLAGS) main.c -o lib/arm64-v8a/libtriangle.so $(LDFLAGS)
 	$(AAPT) package -f -M AndroidManifest.xml -I $(SDK)/platforms/android-21/android.jar -F triangle.unsigned.apk
 	$(AAPT) add triangle.unsigned.apk lib/arm64-v8a/libtriangle.so > /dev/null
 	$(SIGNER) sign --ks ~/.gradle/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --out triangle.apk triangle.unsigned.apk
